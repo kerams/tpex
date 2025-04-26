@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="TpEx.Runtime/TpEx.Runtime.fsproj" />
+  <Project Path="TpEx/TpEx.fsproj" />
+</Solution>

@@ -1,0 +1,16 @@
+version 9.0.0
+
+group runtime
+  source https://api.nuget.org/v3/index.json
+  storage: none
+  framework: net10.0
+  nuget FSharp.Core >= 9 prerelease
+
+group tp
+  source https://api.nuget.org/v3/index.json
+  storage: none
+  framework: netstandard2.0
+  nuget FSharp.Core >= 9 prerelease
+
+  github kerams/FSharp.TypeProviders.SDK:f src/ProvidedTypes.fsi
+  github kerams/FSharp.TypeProviders.SDK:f src/ProvidedTypes.fs

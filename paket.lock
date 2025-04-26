@@ -1,0 +1,19 @@
+
+
+GROUP runtime
+STORAGE: NONE
+RESTRICTION: == net10.0
+NUGET
+  remote: https://api.nuget.org/v3/index.json
+    FSharp.Core (9.0.300-beta.25181.1)
+
+GROUP tp
+STORAGE: NONE
+RESTRICTION: == netstandard2.0
+NUGET
+  remote: https://api.nuget.org/v3/index.json
+    FSharp.Core (9.0.300-beta.25181.1)
+GITHUB
+  remote: kerams/FSharp.TypeProviders.SDK
+    src/ProvidedTypes.fs (05910a8380e50deec6c3a67da97ce9d7482226db)
+    src/ProvidedTypes.fsi (05910a8380e50deec6c3a67da97ce9d7482226db)

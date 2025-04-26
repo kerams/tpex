@@ -1,0 +1,21 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <AssemblyName>FSharp.TpEx</AssemblyName>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <NoWarn>FS0044</NoWarn>
+    <DefineConstants>NO_GENERATIVE</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\paket-files\tp\kerams\FSharp.TypeProviders.SDK\src\ProvidedTypes.fsi" Link="ProvidedTypes.fsi" />
+    <Compile Include="..\paket-files\tp\kerams\FSharp.TypeProviders.SDK\src\ProvidedTypes.fs" Link="ProvidedTypes.fs" />
+    <Compile Include="TypeProviderAssembly.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="FSharp.Compiler.Service">
+      <HintPath>D:\fsharp\artifacts\bin\FSharp.Compiler.Service\Debug\netstandard2.0\FSharp.Compiler.Service.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+  <Import Project="..\.paket\Paket.Restore.targets" />
+</Project>
