@@ -1,10 +1,30 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Project Sdk="Microsoft.NET.Sdk">
+<Project>
+  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
+    <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);IncludeAllDlls</TargetsForTfmSpecificBuildOutput>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <Nullable>enable</Nullable>
   </PropertyGroup>
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
   <ItemGroup>
     <Compile Include="Main.fs" />
   </ItemGroup>
+  <Target Name="BeforeBuild">
+    <MSBuild Projects="..\TpEx\TpEx.fsproj" Targets="Build" Properties="Configuration=$(Configuration);TargetFramework=netstandard2.0" />
+  </Target>
+  <Target Name="AfterBuild">
+    <CreateItem Include="..\TpEx\bin\$(Configuration)\netstandard2.0\*.dll;..\TpEx\bin\$(Configuration)\netstandard2.0\*.pdb">
+      <Output TaskParameter="Include" ItemName="DesignTimeBinaries1" />
+    </CreateItem>
+    <Copy SourceFiles="@(DesignTimeBinaries1)" DestinationFolder="$(OutputPath)/../typeproviders/fsharp41/netstandard2.0" />
+  </Target>
+  <Target Name="IncludeAllDlls">
+    <ItemGroup>
+      <BuildOutputInPackage Include="$(OutputPath)\*.dll" Exclude="$(OutputPath)\$(AssemblyName).dll" />
+    </ItemGroup>
+  </Target>
   <Import Project="..\.paket\Paket.Restore.targets" />
 </Project>

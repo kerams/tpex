@@ -6,10 +6,12 @@
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <NoWarn>FS0044</NoWarn>
     <DefineConstants>NO_GENERATIVE</DefineConstants>
+    <Nullable>disable</Nullable>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\paket-files\tp\kerams\FSharp.TypeProviders.SDK\src\ProvidedTypes.fsi" Link="ProvidedTypes.fsi" />
     <Compile Include="..\paket-files\tp\kerams\FSharp.TypeProviders.SDK\src\ProvidedTypes.fs" Link="ProvidedTypes.fs" />
+    <Compile Include="AstHelpers.fs" />
     <Compile Include="TypeProviderAssembly.fs" />
   </ItemGroup>
   <ItemGroup>

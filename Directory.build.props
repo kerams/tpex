@@ -7,6 +7,5 @@
         <WarningLevel>4</WarningLevel>
         <ProduceReferenceAssembly>true</ProduceReferenceAssembly>
         <SuppressNETCoreSdkPreviewMessage>true</SuppressNETCoreSdkPreviewMessage>
-        <Nullable>enable</Nullable>
     </PropertyGroup>
 </Project>
