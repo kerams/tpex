@@ -7,7 +7,6 @@ open System
 open System.Buffers.Binary
 open System.Text
 open System.Net.Http
-open System.Threading.Tasks
 open Fable.Remoting.Json
 open Newtonsoft.Json
 
@@ -17,12 +16,26 @@ type ProxyRequestException (response: HttpResponseMessage, errorMsg) =
     inherit System.Exception (errorMsg)
     member _.StatusCode = response.StatusCode
 
-let createBody arg =
-    let s = JsonConvert.SerializeObject (arg, converter)
-    new StringContent (s, Encoding.UTF8, "application/json")
+let createBody (arg: obj[]): HttpContent =
+    if arg |> Array.exists (fun x -> x :? byte[]) then
+        let f = new MultipartFormDataContent ()
 
-let post (client: HttpClient) (url: string) arg = backgroundTask {
-    use content = createBody [ arg ]
+        for arg in arg do
+            match arg with
+            | :? (byte[]) as data ->
+                let c = new ByteArrayContent (data)
+                c.Headers.ContentType <- System.Net.Http.Headers.MediaTypeHeaderValue "application/octet-stream"
+                f.Add c
+            | _ ->
+                let ser = JsonConvert.SerializeObject(arg, converter)
+                f.Add (new StringContent (ser, Encoding.UTF8, "application/json"))
+        f
+    else
+        let s = JsonConvert.SerializeObject (arg, converter)
+        new StringContent (s, Encoding.UTF8, "application/json")
+
+let post (client: HttpClient) (url: string) args = backgroundTask {
+    use content = createBody args
     use! response = client.PostAsync (url, content)
     let! responseData = response.Content.ReadAsByteArrayAsync()
 
@@ -171,6 +184,10 @@ let readArrayLength (data: byte[], pos: int ref) =
         len
     | b ->
         failwithf "Expected array-encoded type, got format %d" b
+
+let readOptionArrayLength (data: byte[], pos: int ref) =
+    if readArrayLength (data, pos) > 2 then
+        failwithf "Expected array with fewer than 3 elements for option"
 
 let deserDateTimeOffset (data, pos: int ref) =
     let _ = readArrayLength (data, pos)

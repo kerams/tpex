@@ -139,7 +139,7 @@ module Remoting =
         let b =
             // 1 element array if fieldless case
             // 2 element otherwise
-            simpleLet m "_todoValidate" (deserCall m "readArrayLength") (
+            simpleLet m "_" (deserCall m "readArrayLength") (
                 match' m (deserCall m "deserInt32") [
                     for i, case in u.Cases () |> Array.indexed do
                         let rhs =
@@ -153,7 +153,7 @@ module Remoting =
                                 |> app' m caseName
                             | x ->
                                 // multi field need an array
-                                simpleLet m "_todoValidate" (deserCall m "readArrayLength") (
+                                simpleLet m "_" (deserCall m "readArrayLength") (
                                     tuple m [
                                         for _name, typF in x do
                                             deserCall' m (generateFunc funcs m typF)
@@ -172,52 +172,47 @@ module Remoting =
 
     and generateOptionFunc (funcs: ResizeArray<_>) m name typ =
         let b =
-            iff
-                m
-                (apps m [ exprLongId m [ "op_GreaterThan" ]; deserCall m "readArrayLength"; constInt m 2 ])
-                (app m [ "failwith" ] (constString m "expected array with fewer than 3 elements for option"))
-                (
-                    SynExpr.Sequential (
-                        DebugPointAtSequential.SuppressBoth,
-                        true,
-                        SynExpr.LongIdentSet (dottedIdToSynLongId m "pos.Value", apps m [ exprLongId m [ "op_Addition" ]; exprLongId m [ "pos"; "Value" ]; constInt m 1 ], m),
-                        (
-                            iff
-                                m
-                                (
-                                    apps m [
-                                        exprLongId m [ "op_Equality" ]
-                                        
-                                        SynExpr.DotIndexedGet (
-                                            exprLongId m [ "data" ],
-                                            (
-                                                apps m [ exprLongId m [ "op_Subtraction" ]; exprLongId m [ "pos"; "Value" ]; constInt m 1 ]
-                                            ),
-                                            m,
-                                            m
-                                        )
+            simpleLet m "_" (deserCall m "readOptionArrayLength") (
+                SynExpr.Sequential (
+                    DebugPointAtSequential.SuppressBoth,
+                    true,
+                    SynExpr.LongIdentSet (dottedIdToSynLongId m "pos.Value", apps m [ exprLongId m [ "op_Addition" ]; exprLongId m [ "pos"; "Value" ]; constInt m 1 ], m),
+                    (
+                        iff
+                            m
+                            (
+                                apps m [
+                                    exprLongId m [ "op_Equality" ]
+                                    
+                                    SynExpr.DotIndexedGet (
+                                        exprLongId m [ "data" ],
+                                        (
+                                            apps m [ exprLongId m [ "op_Subtraction" ]; exprLongId m [ "pos"; "Value" ]; constInt m 1 ]
+                                        ),
+                                        m,
+                                        m
+                                    )
 
-                                        SynExpr.Const (SynConst.Byte 0uy, m)
-                                    ]
-                                )
-                                (exprLongId m [ "Option"; "None" ])
-                                (
-                                    app m [ "Option"; "Some" ] (SynExpr.Paren (deserCall' m (generateFunc funcs m typ), m, None, m))
-                                    |> Some
-                                )
-                        ),
-                        m,
-                        zero ()
-                    )
-                    |> Some
+                                    SynExpr.Const (SynConst.Byte 0uy, m)
+                                ]
+                            )
+                            (exprLongId m [ "Option"; "None" ])
+                            (
+                                app m [ "Option"; "Some" ] (SynExpr.Paren (deserCall' m (generateFunc funcs m typ), m, None, m))
+                                |> Some
+                            )
+                    ),
+                    m,
+                    zero ()
                 )
+            )
             |> createBinding m name
         
         funcs.Add ((name, b))
 
     and generateRecordFunc (funcs: ResizeArray<_>) m n typ r =
         let b =
-            simpleLet m "_todoValidate" (deserCall m "readArrayLength") (
+            simpleLet m "_" (deserCall m "readArrayLength") (
                 SynExpr.Record (
                     None,
                     None,
@@ -239,8 +234,8 @@ module Remoting =
 
     and generateArray (funcs: ResizeArray<_>) m n typ =
         let b =
-            simpleLet m "len" (deserCall m "readArrayLength") (
-                simpleLet m "a" (app m [ "zeroCreateUnchecked" ] (exprLongId m [ "len" ])) (
+            simpleLet m "lenTodoValidate" (deserCall m "readArrayLength") (
+                simpleLet m "a" (app m [ "zeroCreateUnchecked" ] (exprLongId m [ "lenTodoValidate" ])) (
                     SynExpr.Sequential (
                         DebugPointAtSequential.SuppressBoth,
                         true,
@@ -248,7 +243,7 @@ module Remoting =
                             foreach
                                 m
                                 (namedPat m "i")
-                                (SynExpr.IndexRange (Some (constInt m 0), m, Some (apps m [ exprLongId m [ "op_Subtraction" ]; exprLongId m [ "len" ]; constInt m 1 ]), m, m, m))
+                                (SynExpr.IndexRange (Some (constInt m 0), m, Some (apps m [ exprLongId m [ "op_Subtraction" ]; exprLongId m [ "lenTodoValidate" ]; constInt m 1 ]), m, m, m))
                                 (SynExpr.DotIndexedSet (
                                     exprLongId m [ "a" ],
                                     exprLongId m [ "i" ],
@@ -270,7 +265,7 @@ module Remoting =
 
     and generateTuple (funcs: ResizeArray<_>) m n types =
         let b =
-            simpleLet m "_todoValidate" (deserCall m "readArrayLength") (
+            simpleLet m "_" (deserCall m "readArrayLength") (
                 tuple m [ for typ in types -> deserCall' m (generateFunc funcs m typ) ]
             )
             |> createBinding m n
@@ -353,11 +348,10 @@ module Remoting =
         let ps =
             match x.Parameters with
             | [| { Repr = Unit } |] -> [||]
-            | [| _ |] ->
+            | _ ->
                 x.Parameters
                 |> Array.indexed
                 |> Array.map (fun (i, _x) -> $"x{i}", None)
-            | _ -> failwithf "unsupp generateMethodProxy parameters %s.%s" typName x.Name
 
         app m [ "backgroundTask" ] (
             SynExpr.ComputationExpr (
@@ -371,9 +365,9 @@ module Remoting =
                             exprLongId m [ "http" ]
                             apps m [ exprLongId m [ "op_Addition" ]; exprLongId m [ "url" ]; constString m $"{typName}/{x.Name}" ]
 
-                            match x.Parameters with
-                            | [| { Repr = Unit } |] -> exprUnit m
-                            | _ -> exprLongId m [ "x0" ]
+                            match ps with
+                            | [||] -> SynExpr.ArrayOrList (true, [ exprUnit m ], m)
+                            | _ -> SynExpr.ArrayOrList (true, [ for p, _ in ps -> exprLongId m [ p ] ], m)
                         ]
                     )
                     (
