@@ -294,3 +294,21 @@ let rec sequentials m cont exprs =
     | h :: t -> SynExpr.Sequential (DebugPointAtSequential.SuppressBoth, true, h, sequentials m cont t, m, zero())
 
 let unchecked = tapp range0 (exprLongId range0 [ "Unchecked"; "defaultof" ]) [ SynType.Anon range0 ]
+
+let lambda m pats body =
+    SynExpr.Paren (
+        (
+            SynExpr.Lambda (
+                false,
+                false,
+                SynSimplePats.SimplePats (pats, [], m),
+                body,
+                None,
+                m,
+                zero ()
+            )
+        ),
+        m,
+        None,
+        m
+    )

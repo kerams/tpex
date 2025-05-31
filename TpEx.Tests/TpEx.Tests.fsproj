@@ -9,6 +9,7 @@
     <DotnetFscCompilerPath></DotnetFscCompilerPath>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="UMX.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

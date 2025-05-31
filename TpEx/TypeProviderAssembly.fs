@@ -124,8 +124,16 @@ module Remoting =
     let caseOrFieldNameQualifiedSynLong m typ caseOrField = 
         dottedIdToSynLongId m $"{typ.Path}{typ.Name}.%s{caseOrField}"
 
+    let deserCall' m (funcName, umxCastRequired) =
+        let call = app m [ funcName ] (tuple m [ exprLongId m [ "data" ]; exprLongId m [ "pos" ] ])
+
+        if umxCastRequired then
+            app m [ "op_Splice" ] call
+        else
+            call
+
     let deserCall m funcName =
-        app m [ funcName ] (tuple m [ exprLongId m [ "data" ]; exprLongId m [ "pos" ] ])
+        deserCall' m (funcName, false)
 
     let rec generateUnionFunc (funcs: ResizeArray<_>) m name typ (u: ExUnion) =
         let b =
@@ -141,14 +149,14 @@ module Remoting =
                             | [||] -> caseName
                             | [| _name, typF |] ->
                                 // single field cases serialized directly
-                                SynExpr.Paren (deserCall m (generateFunc funcs m typF), m, None, m)
+                                SynExpr.Paren (deserCall' m (generateFunc funcs m typF), m, None, m)
                                 |> app' m caseName
                             | x ->
                                 // multi field need an array
                                 simpleLet m "_todoValidate" (deserCall m "readArrayLength") (
                                     tuple m [
                                         for _name, typF in x do
-                                            deserCall m (generateFunc funcs m typF)
+                                            deserCall' m (generateFunc funcs m typF)
                                     ]
                                     |> app' m caseName
                                 )
@@ -194,7 +202,7 @@ module Remoting =
                                 )
                                 (exprLongId m [ "Option"; "None" ])
                                 (
-                                    app m [ "Option"; "Some" ] (SynExpr.Paren (deserCall m (generateFunc funcs m typ), m, None, m))
+                                    app m [ "Option"; "Some" ] (SynExpr.Paren (deserCall' m (generateFunc funcs m typ), m, None, m))
                                     |> Some
                                 )
                         ),
@@ -218,7 +226,7 @@ module Remoting =
                             SynExprRecordField (
                                 (caseOrFieldNameQualifiedSynLong m typ name, true),
                                 None,
-                                Some (deserCall m (generateFunc funcs m typF)),
+                                Some (deserCall' m (generateFunc funcs m typF)),
                                 None
                             )
                     ],
@@ -244,7 +252,7 @@ module Remoting =
                                 (SynExpr.DotIndexedSet (
                                     exprLongId m [ "a" ],
                                     exprLongId m [ "i" ],
-                                    deserCall m (generateFunc funcs m typ),
+                                    deserCall' m (generateFunc funcs m typ),
                                     m,
                                     m,
                                     m)
@@ -260,10 +268,37 @@ module Remoting =
 
         funcs.Add ((n, b))
 
-    and generateTuples (funcs: ResizeArray<_>) m n types =
+    and generateTuple (funcs: ResizeArray<_>) m n types =
         let b =
             simpleLet m "_todoValidate" (deserCall m "readArrayLength") (
-                tuple m [ for typ in types -> deserCall m (generateFunc funcs m typ) ]
+                tuple m [ for typ in types -> deserCall' m (generateFunc funcs m typ) ]
+            )
+            |> createBinding m n
+
+        funcs.Add ((n, b))
+
+    // let deserInt32StringFSharpOptionStringTupleMap (data: byte[], pos: int ref) =
+    //     let len = readArrayLength (data, pos)
+    //     Array.init len (fun _ -> deserInt32 (data, pos), deserStringFSharpOptionStringTuple (data, pos))
+    //     |> Map.ofArray
+    and generateMap (funcs: ResizeArray<_>) m n typK typV =
+        let b =
+            simpleLet m "_todoValidate" (deserCall m "readArrayLength") (
+                apps m [
+                    exprLongId m [ "Map"; "ofArray" ]
+
+                    apps m [
+                        exprLongId m [ "Array"; "init" ]
+                        exprLongId m [ "_todoValidate" ]
+
+                        lambda m [ SynSimplePat.Id (Ident ("_", m), None, true, false, false, m) ] (
+                            tuple m [
+                                deserCall' m (generateFunc funcs m typK)
+                                deserCall' m (generateFunc funcs m typV)
+                            ]
+                        )
+                    ]
+                ]
             )
             |> createBinding m n
 
@@ -271,11 +306,20 @@ module Remoting =
 
     and generateFunc (funcs: ResizeArray<_>) m typ =
         let rec inner typ =
-            match typ.GenericParameters () |> Array.map inner |> String.concat ", " with
-            | "" -> typ.Name
-            | x -> $"{typ.Name}<{x}>"
+            match typ.Repr with
+            | Tuple _
+            | F _
+            | MapEx _
+            | Array _
+            | Unit
+            | Option _
+            | Task _ -> typ.Name
+            | _ ->
+                match typ.GenericParameters () |> Array.map inner |> String.concat "," with
+                | "" -> typ.Name
+                | x -> $"{typ.Name}<{x}>"
 
-        let n = $"deser__{inner typ}"
+        let n = $"deser_{inner typ}"
 
         let existing =
             match typ.Repr with
@@ -283,26 +327,27 @@ module Remoting =
             | U u -> generateUnionFunc funcs m n typ u; None
             | Option typ -> generateOptionFunc funcs m n typ; None
             | Array typ -> generateArray funcs m n typ; None
-            | Tuple types -> generateTuples funcs m n types; None
-            | Unit -> Some "deserUnit"
+            | Tuple types -> generateTuple funcs m n types; None
+            | MapEx (typK, typV) -> generateMap funcs m n typK typV; None
+            | Unit -> Some ("deserUnit", false)
             | C _ ->
                 match typ.Name with
-                | "String" -> "deserString"
-                | "Boolean" -> "deserBoolean"
-                | "Int16" -> "deserInt16"
-                | "Int32" -> "deserInt32"
-                | "Int64" -> "deserInt64"
-                | "TimeOnly" -> "deserTimeOnly"
-                | "DateOnly" -> "deserDateOnly"
-                | "DateTimeOffset" -> "deserDateTimeOffset"
-                | "Guid" -> "deserGuid"
+                | "String" -> ("deserString", true)
+                | "Boolean" -> ("deserBoolean", false)
+                | "Int16" -> ("deserInt16", true)
+                | "Int32" -> ("deserInt32", true)
+                | "Int64" -> ("deserInt64", true)
+                | "TimeOnly" -> ("deserTimeOnly", false)
+                | "DateOnly" -> ("deserDateOnly", false)
+                | "DateTimeOffset" -> ("deserDateTimeOffset", false)
+                | "Guid" -> ("deserGuid", true)
                 | _ -> failwithf "unsup generateFunc %A" typ
                 |> Some
             | Task _
             | F _
             | I _ -> failwithf "unsup generateFunc %A" typ
 
-        existing |> Option.defaultValue n
+        existing |> Option.defaultValue (n, false)
 
     let generateMethodProxy funcs m typName x =
         let ps =
@@ -334,13 +379,17 @@ module Remoting =
                     (
                         simpleLet m "pos" (app m [ "ref" ] (SynExpr.Const ((SynConst.Int32 0), m))) (
 
-                            let n =
+                            let n, umxCastRequired =
                                 match x.ReturnType.Repr with
                                 | Task x -> generateFunc funcs m x
                                 | _ -> failwithf "unsupp generateMethodProxy return type %s.%s" typName x.Name
                             
-                            app m [ n ] (SynExpr.Paren (SynExpr.Tuple (false, [ exprLongId m [ "data" ]; exprLongId m [ "pos" ] ], [], m), m, None, m))
-                            |> ret m
+                            let call = app m [ n ] (SynExpr.Paren (SynExpr.Tuple (false, [ exprLongId m [ "data" ]; exprLongId m [ "pos" ] ], [], m), m, None, m))
+                            
+                            if umxCastRequired then
+                                app m [ "op_Splice" ] call |> ret m
+                            else
+                                ret m call
                         )
                     ),
                 m)
@@ -439,6 +488,7 @@ type Providers (config) as this =
         [
             SynModuleDecl.Open (SynOpenDeclTarget.ModuleOrNamespace (dottedIdToSynLongId m "System.Net.Http", m), m)
             SynModuleDecl.Open (SynOpenDeclTarget.ModuleOrNamespace (dottedIdToSynLongId m "FSharp.TpEx.Remoting", m), m)
+            SynModuleDecl.Open (SynOpenDeclTarget.ModuleOrNamespace (dottedIdToSynLongId m "FSharp.UMX", m), m)
 
             for _, f in funcs |> Seq.distinctBy fst do
                 SynModuleDecl.Let (false, [ f ], m)
