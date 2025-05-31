@@ -53,6 +53,8 @@ let typedPat m id typ =
 
 let constString m x = SynExpr.Const (SynConst.String (x, SynStringKind.Regular, m), m)
 
+let constInt m x = SynExpr.Const (SynConst.Int32 x, m)
+
 let methodArgsExpr m args =
     SynExpr.Paren (
         SynExpr.Tuple (
@@ -218,6 +220,29 @@ let apps m (exprs: _ list) =
 let tapp m expr args = SynExpr.TypeApp (expr, m, args, [], None, m, m)
 
 let exprUnit m = SynExpr.Const (SynConst.Unit, m)
+
+let foreach m pat enu body =
+    SynExpr.ForEach (
+        DebugPointAtFor.No,
+        DebugPointAtInOrTo.No,
+        SeqExprOnly.SeqExprOnly false,
+        true,
+        pat,
+        enu,
+        body,
+        m
+    )
+
+let iff m cond th els =
+    SynExpr.IfThenElse (
+        cond,
+        th,
+        els,
+        DebugPointAtBinding.NoneAtInvisible,
+        false,
+        m,
+        { IfKeyword = m; IsElif = false; ThenKeyword = m; ElseKeyword = None; IfToThenRange = m }
+    )
 
 let simpleLet m name rhs body =
     SynExpr.LetOrUse (

@@ -37,6 +37,7 @@ let post (client: HttpClient) (url: string) arg = backgroundTask {
     else
         return raise (ProxyRequestException(response, sprintf "Http error from server occured while making request to %s" url))
 }
+let inline zeroCreateUnchecked (count: int) = GC.AllocateUninitializedArray (count, false)
 
 let inline fixstr len = 160uy + byte len
 [<Literal>]
@@ -154,7 +155,25 @@ let deserInt16 (data: byte[], pos: int ref) =
     | b ->
         failwithf "Expected int16, got format %d" b
 
-let inline deserDateTimeOffset (data, pos: int ref) =
+let readArrayLength (data: byte[], pos: int ref) =
+    match data.[pos.Value] with
+    | b when b ||| 0b00001111uy = 0b10011111uy ->
+        let len = b &&& 0b00001111uy |> int
+        pos.Value <- pos.Value + 1
+        len
+    | Array16 ->
+        let len = BinaryPrimitives.ReadUInt16BigEndian (Span.op_Implicit (data.AsSpan (pos.Value + 1, 2))) |> int
+        pos.Value <- pos.Value + len + 3
+        len
+    | Array32 ->
+        let len = BinaryPrimitives.ReadUInt32BigEndian (Span.op_Implicit (data.AsSpan (pos.Value + 1, 4))) |> int
+        pos.Value <- pos.Value + len + 5
+        len
+    | b ->
+        failwithf "Expected array-encoded type, got format %d" b
+
+let deserDateTimeOffset (data, pos: int ref) =
+    let _ = readArrayLength (data, pos)
     DateTimeOffset (deserInt64 (data, pos), TimeSpan.FromMinutes (deserInt64 (data, pos) |> float))
 
 let inline deserUnit (_data: byte[], pos: int ref) =
@@ -183,11 +202,11 @@ let deserString (data: byte[], pos: int ref) =
         // fixstr
         | b when b ||| 0b00011111uy = 0b10111111uy ->
             let len = b &&& 0b00011111uy |> int
-            pos.Value <- pos.Value + len
+            pos.Value <- pos.Value + len + 1
             len
         | Str8 ->
             let len = data.[pos.Value + 1] |> int
-            pos.Value <- pos.Value + len + 1
+            pos.Value <- pos.Value + len + 2
             len
         | Str16 ->
             let len = BinaryPrimitives.ReadUInt16BigEndian (Span.op_Implicit (data.AsSpan (pos.Value + 1, 2))) |> int
@@ -207,22 +226,5 @@ let inline deserTimeOnly (data: byte[], pos: int ref) =
 
 let inline deserDateOnly (data: byte[], pos: int ref) =
     DateOnly.FromDayNumber (deserInt32 (data, pos))
-
-let readArrayLength (data: byte[], pos: int ref) =
-    match data.[pos.Value] with
-    | b when b ||| 0b00001111uy = 0b10011111uy ->
-        let len = b &&& 0b00001111uy |> int
-        pos.Value <- pos.Value + 1
-        len
-    | Array16 ->
-        let len = BinaryPrimitives.ReadUInt16BigEndian (Span.op_Implicit (data.AsSpan (pos.Value + 1, 2))) |> int
-        pos.Value <- pos.Value + len + 3
-        len
-    | Array32 ->
-        let len = BinaryPrimitives.ReadUInt32BigEndian (Span.op_Implicit (data.AsSpan (pos.Value + 1, 4))) |> int
-        pos.Value <- pos.Value + len + 5
-        len
-    | b ->
-        failwithf "Expected array-encoded type, got format %d" b
 
 #endif

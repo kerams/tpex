@@ -84,14 +84,6 @@ open System
 //open Str
 
 module Remoting =
-    let fName (typ: ExTypeW) =
-        let rec inner typ =
-            match typ.GenericParameters () |> Array.map inner |> String.concat ", " with
-            | "" -> typ.Name
-            | x -> $"{typ.Name}<{x}>"
-        
-        $"deser__{inner typ}"
-
     let createBinding m name rhs =
         SynBinding (
             None,
@@ -120,59 +112,197 @@ module Remoting =
             DebugPointAtBinding.NoneAtInvisible,
             zero())
 
+    let caseOrFieldNameQualifiedExpr m typ caseOrField = 
+        [
+            if not (String.IsNullOrWhiteSpace typ.Path) then
+                yield! typ.Path.Split ([| '.' |], StringSplitOptions.RemoveEmptyEntries)
+            yield typ.Name
+            yield caseOrField
+        ]
+        |> exprLongId m
+
+    let caseOrFieldNameQualifiedSynLong m typ caseOrField = 
+        dottedIdToSynLongId m $"{typ.Path}{typ.Name}.%s{caseOrField}"
+
+    let deserCall m funcName =
+        app m [ funcName ] (tuple m [ exprLongId m [ "data" ]; exprLongId m [ "pos" ] ])
+
     let rec generateUnionFunc (funcs: ResizeArray<_>) m name typ (u: ExUnion) =
         let b =
-            match' m (app m [ "deserInt32" ] (tuple m [ exprLongId m [ "data" ]; exprLongId m [ "pos" ] ])) [
-                for i, case in u.Cases () |> Array.indexed do
-                    let rhs =
-                        let caseName =
-                            [
-                                if not (String.IsNullOrWhiteSpace typ.Path) then
-                                    yield! typ.Path.Split ([| '.' |], StringSplitOptions.RemoveEmptyEntries)
-                                yield typ.Name
-                                yield case.Name
-                            ]
-                            |> exprLongId m
+            // 1 element array if fieldless case
+            // 2 element otherwise
+            simpleLet m "_todoValidate" (deserCall m "readArrayLength") (
+                match' m (deserCall m "deserInt32") [
+                    for i, case in u.Cases () |> Array.indexed do
+                        let rhs =
+                            let caseName = caseOrFieldNameQualifiedExpr m typ case.Name
 
-                        match case.Fields () with
-                        | [||] -> caseName
-                        | [| _x |] ->
-                            SynExpr.Paren (unchecked, m, None, m)
-                            |> app' m caseName
-                        | x ->
-                            tuple m [
-                                // todo
-                                for _e in x do
-                                    unchecked
-                            ]
-                            |> app' m caseName
+                            match case.Fields () with
+                            | [||] -> caseName
+                            | [| _name, typF |] ->
+                                // single field cases serialized directly
+                                SynExpr.Paren (deserCall m (generateFunc funcs m typF), m, None, m)
+                                |> app' m caseName
+                            | x ->
+                                // multi field need an array
+                                simpleLet m "_todoValidate" (deserCall m "readArrayLength") (
+                                    tuple m [
+                                        for _name, typF in x do
+                                            deserCall m (generateFunc funcs m typF)
+                                    ]
+                                    |> app' m caseName
+                                )
 
-                    clause m (SynPat.Const (SynConst.Int32 i, m)) rhs
+                        clause m (SynPat.Const (SynConst.Int32 i, m)) rhs
 
-                clause m (namedPat m "b") (apps m [ exprLongId m [ "failwithf" ]; constString m $"Unexpected tag %%d for DU {name}"; exprLongId m [ "b" ] ])
-            ]
+                    clause m (namedPat m "b") (apps m [ exprLongId m [ "failwithf" ]; constString m $"Unexpected tag %%d for DU {name}"; exprLongId m [ "b" ] ])
+                ]
+            )
             |> createBinding m name
         
         funcs.Add ((name, b))
 
-    and generateRecordFunc (funcs: ResizeArray<_>) m n _r =
-        let b = createBinding m n unchecked
+    and generateOptionFunc (funcs: ResizeArray<_>) m name typ =
+        let b =
+            iff
+                m
+                (apps m [ exprLongId m [ "op_GreaterThan" ]; deserCall m "readArrayLength"; constInt m 2 ])
+                (app m [ "failwith" ] (constString m "expected array with fewer than 3 elements for option"))
+                (
+                    SynExpr.Sequential (
+                        DebugPointAtSequential.SuppressBoth,
+                        true,
+                        SynExpr.LongIdentSet (dottedIdToSynLongId m "pos.Value", apps m [ exprLongId m [ "op_Addition" ]; exprLongId m [ "pos"; "Value" ]; constInt m 1 ], m),
+                        (
+                            iff
+                                m
+                                (
+                                    apps m [
+                                        exprLongId m [ "op_Equality" ]
+                                        
+                                        SynExpr.DotIndexedGet (
+                                            exprLongId m [ "data" ],
+                                            (
+                                                apps m [ exprLongId m [ "op_Subtraction" ]; exprLongId m [ "pos"; "Value" ]; constInt m 1 ]
+                                            ),
+                                            m,
+                                            m
+                                        )
+
+                                        SynExpr.Const (SynConst.Byte 0uy, m)
+                                    ]
+                                )
+                                (exprLongId m [ "Option"; "None" ])
+                                (
+                                    app m [ "Option"; "Some" ] (SynExpr.Paren (deserCall m (generateFunc funcs m typ), m, None, m))
+                                    |> Some
+                                )
+                        ),
+                        m,
+                        zero ()
+                    )
+                    |> Some
+                )
+            |> createBinding m name
+        
+        funcs.Add ((name, b))
+
+    and generateRecordFunc (funcs: ResizeArray<_>) m n typ r =
+        let b =
+            simpleLet m "_todoValidate" (deserCall m "readArrayLength") (
+                SynExpr.Record (
+                    None,
+                    None,
+                    [
+                        for name, typF in r.Fields () do
+                            SynExprRecordField (
+                                (caseOrFieldNameQualifiedSynLong m typ name, true),
+                                None,
+                                Some (deserCall m (generateFunc funcs m typF)),
+                                None
+                            )
+                    ],
+                    m
+                )
+            )
+            |> createBinding m n
+
         funcs.Add ((n, b))
 
-    and generateArray (funcs: ResizeArray<_>) m n _typ =
-        let b = createBinding m n unchecked
+    and generateArray (funcs: ResizeArray<_>) m n typ =
+        let b =
+            simpleLet m "len" (deserCall m "readArrayLength") (
+                simpleLet m "a" (app m [ "zeroCreateUnchecked" ] (exprLongId m [ "len" ])) (
+                    SynExpr.Sequential (
+                        DebugPointAtSequential.SuppressBoth,
+                        true,
+                        (
+                            foreach
+                                m
+                                (namedPat m "i")
+                                (SynExpr.IndexRange (Some (constInt m 0), m, Some (apps m [ exprLongId m [ "op_Subtraction" ]; exprLongId m [ "len" ]; constInt m 1 ]), m, m, m))
+                                (SynExpr.DotIndexedSet (
+                                    exprLongId m [ "a" ],
+                                    exprLongId m [ "i" ],
+                                    deserCall m (generateFunc funcs m typ),
+                                    m,
+                                    m,
+                                    m)
+                                )
+                        ),
+                        exprLongId m [ "a" ],
+                        m,
+                        zero()
+                    )
+                )
+            )
+            |> createBinding m n
+
+        funcs.Add ((n, b))
+
+    and generateTuples (funcs: ResizeArray<_>) m n types =
+        let b =
+            simpleLet m "_todoValidate" (deserCall m "readArrayLength") (
+                tuple m [ for typ in types -> deserCall m (generateFunc funcs m typ) ]
+            )
+            |> createBinding m n
+
         funcs.Add ((n, b))
 
     and generateFunc (funcs: ResizeArray<_>) m typ =
-        let n = fName typ
+        let rec inner typ =
+            match typ.GenericParameters () |> Array.map inner |> String.concat ", " with
+            | "" -> typ.Name
+            | x -> $"{typ.Name}<{x}>"
 
-        match typ.Repr with
-        | R r -> generateRecordFunc funcs m n r
-        | U u -> generateUnionFunc funcs m n typ u
-        | Array typ -> generateArray funcs m n typ
-        | _ -> failwith "unsup generateFunc"
+        let n = $"deser__{inner typ}"
 
-        n
+        let existing =
+            match typ.Repr with
+            | R r -> generateRecordFunc funcs m n typ r; None
+            | U u -> generateUnionFunc funcs m n typ u; None
+            | Option typ -> generateOptionFunc funcs m n typ; None
+            | Array typ -> generateArray funcs m n typ; None
+            | Tuple types -> generateTuples funcs m n types; None
+            | Unit -> Some "deserUnit"
+            | C _ ->
+                match typ.Name with
+                | "String" -> "deserString"
+                | "Boolean" -> "deserBoolean"
+                | "Int16" -> "deserInt16"
+                | "Int32" -> "deserInt32"
+                | "Int64" -> "deserInt64"
+                | "TimeOnly" -> "deserTimeOnly"
+                | "DateOnly" -> "deserDateOnly"
+                | "DateTimeOffset" -> "deserDateTimeOffset"
+                | "Guid" -> "deserGuid"
+                | _ -> failwithf "unsup generateFunc %A" typ
+                |> Some
+            | Task _
+            | F _
+            | I _ -> failwithf "unsup generateFunc %A" typ
+
+        existing |> Option.defaultValue n
 
     let generateMethodProxy funcs m typName x =
         let ps =
@@ -182,7 +312,7 @@ module Remoting =
                 x.Parameters
                 |> Array.indexed
                 |> Array.map (fun (i, _x) -> $"x{i}", None)
-            | _ -> failwith "unsupp generateMethodProxy"
+            | _ -> failwithf "unsupp generateMethodProxy parameters %s.%s" typName x.Name
 
         app m [ "backgroundTask" ] (
             SynExpr.ComputationExpr (
@@ -207,7 +337,7 @@ module Remoting =
                             let n =
                                 match x.ReturnType.Repr with
                                 | Task x -> generateFunc funcs m x
-                                | _ -> failwith "unsup"
+                                | _ -> failwithf "unsupp generateMethodProxy return type %s.%s" typName x.Name
                             
                             app m [ n ] (SynExpr.Paren (SynExpr.Tuple (false, [ exprLongId m [ "data" ]; exprLongId m [ "pos" ] ], [], m), m, None, m))
                             |> ret m
