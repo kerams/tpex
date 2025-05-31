@@ -11,6 +11,12 @@
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
   <ItemGroup>
     <Compile Include="Main.fs" />
+    <Compile Include="Remoting.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Fable.Remoting.Json" Version="2.25.0" />
+    <PackageReference Include="Fable.Remoting.MsgPack" Version="1.24.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
   </ItemGroup>
   <Target Name="BeforeBuild">
     <MSBuild Projects="..\TpEx\TpEx.fsproj" Targets="Build" Properties="Configuration=$(Configuration);TargetFramework=netstandard2.0" />

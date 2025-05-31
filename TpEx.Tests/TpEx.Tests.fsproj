@@ -12,6 +12,10 @@
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Fable.Remoting.Json" Version="2.25.0" />
+    <PackageReference Include="Fable.Remoting.MsgPack" Version="1.24.0" />
+  </ItemGroup>
+  <ItemGroup>
     <Reference Include="TpEx.Runtime">
       <HintPath>..\TpEx.Runtime\bin\Debug\net10.0\TpEx.Runtime.dll</HintPath>
     </Reference>
