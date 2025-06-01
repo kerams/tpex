@@ -290,3 +290,6 @@ __pycache__/
 .ionide/
 .publish/
 *.txt
+
+Domain.fs
+Contract.fs

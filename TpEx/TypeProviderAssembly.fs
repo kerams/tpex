@@ -170,6 +170,19 @@ module Remoting =
         
         funcs.Add ((name, b))
 
+    and generateEnumFunc (funcs: ResizeArray<_>) m name typ cases =
+        let b =
+            match' m (deserCall m "deserInt32") [
+                for case, i in cases do
+                    caseOrFieldNameQualifiedExpr m typ case
+                    |> clause m (SynPat.Const (SynConst.Int32 i, m))
+
+                clause m (namedPat m "b") (apps m [ exprLongId m [ "failwithf" ]; constString m $"Unexpected tag %%d for enum {name}"; exprLongId m [ "b" ] ])
+            ]
+            |> createBinding m name
+        
+        funcs.Add ((name, b))
+
     and generateOptionFunc (funcs: ResizeArray<_>) m name typ =
         let b =
             simpleLet m "_" (deserCall m "readOptionArrayLength") (
@@ -320,6 +333,7 @@ module Remoting =
             match typ.Repr with
             | R r -> generateRecordFunc funcs m n typ r; None
             | U u -> generateUnionFunc funcs m n typ u; None
+            | E cases -> generateEnumFunc funcs m n typ cases; None
             | Option typ -> generateOptionFunc funcs m n typ; None
             | Array typ -> generateArray funcs m n typ; None
             | Tuple types -> generateTuple funcs m n types; None
