@@ -335,6 +335,7 @@ module Remoting =
             | U u -> generateUnionFunc funcs m n typ u; None
             | E cases -> generateEnumFunc funcs m n typ cases; None
             | Option typ -> generateOptionFunc funcs m n typ; None
+            | Array { Repr = C _; Name = "Byte" } -> Some ("deserByteArray", false)
             | Array typ -> generateArray funcs m n typ; None
             | Tuple types -> generateTuple funcs m n types; None
             | MapEx (typK, typV) -> generateMap funcs m n typK typV; None
@@ -385,20 +386,24 @@ module Remoting =
                         ]
                     )
                     (
-                        simpleLet m "pos" (app m [ "ref" ] (SynExpr.Const ((SynConst.Int32 0), m))) (
+                        match x.ReturnType.Repr with
+                        | Task { Repr = Array { Repr = C _; Name = "Byte" } } -> 
+                            ret m (exprLongId m [ "data" ])
+                        | _ ->
+                            simpleLet m "pos" (app m [ "ref" ] (SynExpr.Const ((SynConst.Int32 0), m))) (
 
-                            let n, umxCastRequired =
-                                match x.ReturnType.Repr with
-                                | Task x -> generateFunc funcs m x
-                                | _ -> failwithf "unsupp generateMethodProxy return type %s.%s" typName x.Name
-                            
-                            let call = app m [ n ] (SynExpr.Paren (SynExpr.Tuple (false, [ exprLongId m [ "data" ]; exprLongId m [ "pos" ] ], [], m), m, None, m))
-                            
-                            if umxCastRequired then
-                                app m [ "op_Splice" ] call |> ret m
-                            else
-                                ret m call
-                        )
+                                let n, umxCastRequired =
+                                    match x.ReturnType.Repr with
+                                    | Task x -> generateFunc funcs m x
+                                    | _ -> failwithf "unsupp generateMethodProxy return type %s.%s" typName x.Name
+                                
+                                let call = app m [ n ] (SynExpr.Paren (SynExpr.Tuple (false, [ exprLongId m [ "data" ]; exprLongId m [ "pos" ] ], [], m), m, None, m))
+                                
+                                if umxCastRequired then
+                                    app m [ "op_Splice" ] call |> ret m
+                                else
+                                    ret m call
+                            )
                     ),
                 m)
         )

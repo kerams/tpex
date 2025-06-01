@@ -95,6 +95,10 @@ let Int64 = 0xd3uy
 
 [<Literal>]
 let Bin8 = 0xc4uy
+[<Literal>]
+let Bin16 = 0xc5uy
+[<Literal>]
+let Bin32 = 0xc6uy
 
 let inline readInt16 (data, pos: int ref) =
     pos.Value <- pos.Value + 3
@@ -204,6 +208,26 @@ let inline deserGuid (data: byte[], pos: int ref) =
         Guid (data.AsSpan (pos.Value - 16, 16))
     | b ->
         failwithf "Expected bin8 for guid, got format %d" b
+
+let deserByteArray (data: byte[], pos: int ref) =
+    let len =
+        match data.[pos.Value] with
+        | Bin8 ->
+            let len = data.[pos.Value + 1] |> int
+            pos.Value <- pos.Value + len + 2
+            len
+        | Bin16 ->
+            let len = BinaryPrimitives.ReadUInt16BigEndian (Span.op_Implicit (data.AsSpan (pos.Value + 1, 2))) |> int
+            pos.Value <- pos.Value + len + 3
+            len
+        | Bin32 ->
+            let len = BinaryPrimitives.ReadUInt32BigEndian (Span.op_Implicit (data.AsSpan (pos.Value + 1, 4))) |> int
+            pos.Value <- pos.Value + len + 5
+            len
+        | b ->
+            failwithf "Expected byte array, got format %d" b
+
+    data.AsSpan(pos.Value - len, len).ToArray ()
 
 let inline deserBoolean (data: byte[], pos: int ref) =
     pos.Value <- pos.Value + 1
